@@ -156,8 +156,10 @@ instead of pretending the result is more precise than it is.
 \subsection{Fairness: Whose Errors?}
 
 Even a classifier with good average accuracy can make worse predictions for
-some demographic groups than others. Hardt et al.\ formalized two useful
-metrics for measuring this \cite{hardt2016}:
+some demographic groups than others. This problem is well-documented---there's
+a large literature on sources and types of bias in trained models
+\cite{mehrabi2021}. Hardt et al.\ formalized two specific metrics that
+are practical to compute \cite{hardt2016}:
 
 \begin{itemize}
   \item \textbf{Demographic Parity Difference (DPD)}: the gap in positive
@@ -509,8 +511,11 @@ on context---but I think you have to check before you can know. And right
 now, most evaluations don't check.
 
 I don't think this is the final word on anything. It's a small study on a
-synthetic benchmark, and I've noted the limitations throughout. But I think
-the core question---what does a performance metric not tell you---is worth
+synthetic benchmark, and I've noted the limitations throughout. There's a
+wider argument in the literature that messy evaluation practices in ML lead to
+real downstream problems when these systems get deployed \cite{sculley2015},
+and I think the results here are at least a small illustration of why. The
+core question---what does a performance metric not tell you---is worth
 asking earlier and more routinely than it currently is.
 
 % ============================================================
