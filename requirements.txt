@@ -1,6 +1,7 @@
-numpy>=1.24.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
-matplotlib>=3.7.0
-catboost>=1.2.0
-scipy>=1.11.0
+# versions I tested with -- floating constraints might work too but pinning to be safe
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.2
+matplotlib==3.9.0
+catboost==1.2.7
+scipy==1.13.1

@@ -22,14 +22,14 @@ manuscript.tex            LaTeX source for the paper
 pip install -r requirements.txt
 ```
 
-Place `ibm_hr_attrition.csv` in `data/` (see `data/README.md` for the Kaggle link), then:
+Download `ibm_hr_attrition.csv` from Kaggle (link in `data/README.md`) and put it in `data/`, then:
 
 ```bash
 python calibration_analysis.py   # writes results.json
-python figure_generation.py      # writes figures/
+python figure_generation.py      # reads results.json, writes figures/
 ```
 
-That's it. Both scripts are self-contained and don't need any extra configuration. If you just want to see the figures without running the model, `figure_generation.py` will fall back to the manuscript's reported values if `results.json` isn't present.
+Note: CatBoost creates a `catboost_info/` directory when it runs — that's normal, it's just training logs. I've gitignored it. Also, if you skip the first script, `figure_generation.py` will use hardcoded fallback values from the manuscript instead of erroring out.
 
 ## Dataset
 
@@ -37,14 +37,12 @@ IBM HR Analytics Employee Attrition dataset. 1,470 synthetic employee records, 3
 
 ## What the analysis does
 
-1. Trains three classifiers: Logistic Regression, Random Forest, CatBoost
-2. Computes test-set AUC for each
-3. Computes Expected Calibration Error before and after isotonic regression correction
-4. Bootstraps AUC 1,000 times to get a confidence interval
-5. Computes Demographic Parity Difference and Equalized Odds Difference for gender and age group
+Trains Logistic Regression, Random Forest, and CatBoost on the dataset. Then runs three checks AUC doesn't run for you: (1) Expected Calibration Error before and after isotonic regression correction, (2) bootstrap confidence intervals on AUC using 1,000 resamples of the test set, and (3) Demographic Parity Difference and Equalized Odds Difference for gender and age groups.
 
-The main finding is that all three models achieved decent AUC (0.78–0.82) while having meaningful calibration error, wide confidence intervals, and a substantial age-group fairness disparity. None of those issues show up if you only look at AUC.
+All three models scored between 0.76 and 0.80 AUC, which looks fine. CatBoost's calibration error was 8.6% before correction. Every model's bootstrap CI was about 15–16 percentage points wide. Age-group EOD was 0.258 for CatBoost. None of that shows up in the AUC number.
 
 ## Notes on reproducibility
 
-The random seed is set to 42 throughout. Results should be exactly reproducible if you use the same package versions. Minor floating-point variation is possible across OS/hardware but won't change the qualitative findings. See `reproducibility_notes.md` for details.
+Random seed is 42 throughout. I got the same results on macOS and tested with the exact package versions in `requirements.txt`. If you use different versions (especially sklearn) you might get slightly different numbers but the qualitative findings should hold. More details in `reproducibility_notes.md`.
+
+One thing to know: the first time I ran this I accidentally fit the isotonic calibration on part of the test set instead of a separate hold-out, which gave artificially good calibration numbers. The current version splits a calibration hold-out from the training set before the test set is ever touched. If you're adapting this, make sure to keep those splits separate.
