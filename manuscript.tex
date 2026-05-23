@@ -33,38 +33,36 @@ bootstrap uncertainty; small datasets; classifier evaluation}
 \end{center}
 
 \begin{abstract}
-\textbf{Background/Objective:}
-Area under the ROC curve (AUC) is the dominant evaluation metric for binary
-classifiers, but it reports only rank discrimination and omits several
-properties that matter in practice: whether predicted probabilities are
-accurate, how stable the score is across different data splits, and whether
-prediction errors fall equally on all demographic groups. This study asks
-whether these hidden gaps are detectable on a small benchmark dataset using
-standard tools already available to most practitioners.
+Most people evaluating a machine learning model stop at one number: AUC,
+the area under the ROC curve. If it clears some threshold---say, 0.75 or
+0.80---the model gets called ``good enough'' and the evaluation ends there.
+I wanted to find out what that habit actually hides.
 
-\textbf{Methods:}
-Three classifiers---Logistic Regression, Random Forest, and CatBoost---were
-trained on the IBM HR Analytics Employee Attrition dataset (1,470 records).
-Beyond AUC, each model was evaluated for Expected Calibration Error (ECE)
-before and after isotonic regression correction, bootstrap confidence
-intervals on AUC (1,000 resamples), and demographic fairness metrics
-(Demographic Parity Difference and Equalized Odds Difference) for gender
-and age groups.
+I trained three classifiers---Logistic Regression, Random Forest, and
+CatBoost---on the IBM HR Analytics Employee Attrition dataset (1,470
+employee records) and then ran three checks that AUC never runs for you.
+First, I measured calibration: do the model's probability outputs actually
+match real outcome rates, or do they just rank things in the right order
+while being numerically wrong? I used Expected Calibration Error (ECE)
+before and after applying an isotonic regression correction. Second, I built
+bootstrap confidence intervals on AUC using 1,000 resamples of the test
+set---because any single 294-record test split is just one of many possible
+draws, and I wanted to see how much the score would bounce around. Third, I
+computed fairness metrics (Demographic Parity Difference and Equalized Odds
+Difference) for gender and age groups to check whether prediction errors
+fell equally on different groups of people.
 
-\textbf{Results:}
-AUC scores ranged from 0.759 to 0.798, which appears acceptable by standard
-benchmarks. However, CatBoost's pre-calibration ECE was 8.6\%. Bootstrap
-95\% confidence intervals spanned 15--16 percentage points for all models,
-reflecting genuine uncertainty at this dataset size. The age-group Equalized
-Odds Difference reached 0.258 for CatBoost---a 26-point fairness gap
-invisible to AUC.
-
-\textbf{Conclusions:}
-All three problems appeared simultaneously in the same models while AUC
-looked acceptable. These gaps are not exotic failure modes; they are
-detectable with standard scikit-learn tools in a few additional hours of
-work. AUC alone is insufficient for evaluating classifiers intended for
-decisions that affect real people.
+The results were more uncomfortable than I expected. All three models
+cleared 0.75 AUC. CatBoost's probability outputs were off by 8.6 percentage
+points on average before correction. Every model's bootstrap confidence
+interval was about 15--16 percentage points wide, meaning a ``0.762 AUC''
+could just as plausibly have been 0.68 or 0.84 on a different random split.
+The age-group fairness gap reached 0.258 for CatBoost---a 26-point
+difference in how errors were distributed between younger and older
+employees---while the AUC score showed nothing wrong at all. The point of
+this paper is not that these problems are unusual. It's that they showed up
+together, in the same ordinary models, without any signal from the metric
+everyone relies on.
 \end{abstract}
 
 \newpage
