@@ -11,3 +11,8 @@ results.json
 *.blg
 *.out
 *.synctex.gz
+catboost_info/
+*.docx
+manuscript.pdf
+manuscript_anonymized.pdf
+missfont.log

@@ -13,6 +13,8 @@ Figure 2's bootstrap distribution uses the same seed in `figure_generation.py`.
 
 ## Expected outputs
 
+If you run the analysis on the IBM HR dataset with these seeds, you should get:
+
 | Metric | Expected value |
 |---|---|
 | CatBoost AUC | ~0.818 |
@@ -26,7 +28,7 @@ Figure 2's bootstrap distribution uses the same seed in `figure_generation.py`.
 | Gender EOD | ~0.121 |
 | Age EOD | ~0.266 |
 
-Minor floating-point variation across OS/hardware is normal.
+Minor floating-point variation across different OS/hardware is normal and won't change conclusions.
 
 ## Package versions tested
 
@@ -38,3 +40,9 @@ numpy 1.26.4
 pandas 2.2.2
 matplotlib 3.9.0
 ```
+
+Newer versions should also work.
+
+## CatBoost note
+
+CatBoost installation can sometimes be slow or fail on some platforms. If `pip install catboost` doesn't work, try `pip install catboost --no-cache-dir`. If CatBoost is unavailable, the script will run LR and RF only and still produce valid results and figures.

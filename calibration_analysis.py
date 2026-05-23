@@ -36,6 +36,10 @@ RANDOM_SEED = 42
 DATA_PATH   = "data/ibm_hr_attrition.csv"
 
 
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
+
 def ece(y_true, y_prob, n_bins=10):
     """Expected Calibration Error with equal-width bins."""
     bins = np.linspace(0, 1, n_bins + 1)
@@ -62,7 +66,9 @@ def dpd(y_pred, group):
 
 
 def eod(y_true, y_pred, group):
-    """Equalized Odds Difference: max of |TPR_0 - TPR_1| and |FPR_0 - FPR_1|."""
+    """
+    Equalized Odds Difference: max of |TPR_0 - TPR_1| and |FPR_0 - FPR_1|.
+    """
     vals = np.unique(group)
     tprs, fprs = [], []
     for v in vals:
@@ -95,15 +101,22 @@ def bootstrap_auc(y_true, y_prob, n=1000, seed=42):
     }
 
 
+# ------------------------------------------------------------------
+# Load and preprocess
+# ------------------------------------------------------------------
+
 def load_data(path):
     df = pd.read_csv(path, sep=None, engine="python")
     drop_cols = ["EmployeeNumber", "EmployeeCount", "StandardHours", "Over18"]
     df = df.drop(columns=[c for c in drop_cols if c in df.columns])
+
     df["Attrition"] = (df["Attrition"] == "Yes").astype(int)
     df["Gender"]    = (df["Gender"] == "Male").astype(int)
     df["OverTime"]  = (df["OverTime"] == "Yes").astype(int)
+
     cat_cols = df.select_dtypes("object").columns.tolist()
     df = pd.get_dummies(df, columns=cat_cols, drop_first=True)
+
     y = df.pop("Attrition").values
     X = df.copy()
     return X, y, df
@@ -120,13 +133,17 @@ def main():
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=RANDOM_SEED, stratify=y
     )
+
+    # Scale for LR
     scaler = StandardScaler()
     Xtr_sc = scaler.fit_transform(X_train)
     Xte_sc = scaler.transform(X_test)
 
+    # Group arrays for fairness
     gender_test = X_test["Gender"].values if "Gender" in X_test else None
     age_test    = (X_test["Age"].values < 40).astype(int) if "Age" in X_test else None
 
+    # Calibration hold-out from training set
     Xtr2, Xcal, ytr2, ycal = train_test_split(
         X_train, y_train, test_size=0.2, random_state=RANDOM_SEED, stratify=y_train
     )
@@ -134,29 +151,43 @@ def main():
     Xcal_sc = scaler.transform(Xcal)
 
     results = {"auc": {}, "calibration": {}, "bootstrap": {}, "fairness": {}}
+
+    # ------------------------------------------------------------------
+    # Models
+    # ------------------------------------------------------------------
     models = {}
 
+    # Logistic Regression
     lr = LogisticRegression(max_iter=1000, random_state=RANDOM_SEED)
     lr.fit(Xtr2_sc, ytr2)
-    models["lr"] = ("LR", lr, Xte_sc, Xcal_sc)
+    models["lr"] = ("LR", lr, Xte_sc, Xtr2_sc, Xcal_sc)
 
+    # Random Forest
     rf = RandomForestClassifier(n_estimators=300, random_state=RANDOM_SEED)
     rf.fit(Xtr2, ytr2)
-    models["rf"] = ("RF", rf, X_test, Xcal)
+    models["rf"] = ("RF", rf, X_test, Xtr2, Xcal)
 
+    # CatBoost
     if HAS_CATBOOST:
-        cb = CatBoostClassifier(iterations=300, depth=6, learning_rate=0.05,
-                                random_seed=RANDOM_SEED, verbose=0)
+        cb = CatBoostClassifier(
+            iterations=300, depth=6, learning_rate=0.05,
+            random_seed=RANDOM_SEED, verbose=0
+        )
         cb.fit(Xtr2, ytr2)
-        models["catboost"] = ("CatBoost", cb, X_test, Xcal)
+        models["catboost"] = ("CatBoost", cb, X_test, Xtr2, Xcal)
 
-    for key, (name, clf, Xte, Xcal_fit) in models.items():
+    # ------------------------------------------------------------------
+    # Evaluate each model
+    # ------------------------------------------------------------------
+    for key, (name, clf, Xte, Xtr_fit, Xcal_fit) in models.items():
         print(f"\n--- {name} ---")
+
         prob_te = clf.predict_proba(Xte)[:, 1]
         auc_val = roc_auc_score(y_test, prob_te)
         print(f"  AUC: {auc_val:.4f}")
         results["auc"][key] = float(auc_val)
 
+        # ECE before calibration
         ece_pre, bins_pre = ece(y_test, prob_te)
         print(f"  ECE (pre):  {ece_pre:.4f}")
 
@@ -174,30 +205,44 @@ def main():
             "post": {"ece": ece_post, "bins": bins_post},
         }
 
+        # Bootstrap CI
         bs = bootstrap_auc(y_test, prob_te)
         print(f"  95% CI: [{bs['ci_lo']:.3f}, {bs['ci_hi']:.3f}]")
         results["bootstrap"][key] = bs
 
+        # Fairness (CatBoost only for main table; compute for all)
         y_pred_bin = (prob_te >= 0.5).astype(int)
-        g_dpd = dpd(y_pred_bin, gender_test) if gender_test is not None else None
-        g_eod = eod(y_test, y_pred_bin, gender_test) if gender_test is not None else None
-        a_dpd = dpd(y_pred_bin, age_test) if age_test is not None else None
-        a_eod = eod(y_test, y_pred_bin, age_test) if age_test is not None else None
-        if g_dpd is not None: print(f"  Gender DPD: {g_dpd:.4f}  EOD: {g_eod:.4f}")
-        if a_dpd is not None: print(f"  Age    DPD: {a_dpd:.4f}  EOD: {a_eod:.4f}")
+        if gender_test is not None:
+            g_dpd = dpd(y_pred_bin, gender_test)
+            g_eod = eod(y_test, y_pred_bin, gender_test)
+            print(f"  Gender DPD: {g_dpd:.4f}  EOD: {g_eod:.4f}")
+        else:
+            g_dpd, g_eod = None, None
+
+        if age_test is not None:
+            a_dpd = dpd(y_pred_bin, age_test)
+            a_eod = eod(y_test, y_pred_bin, age_test)
+            print(f"  Age    DPD: {a_dpd:.4f}  EOD: {a_eod:.4f}")
+        else:
+            a_dpd, a_eod = None, None
+
         results["fairness"][key] = {
             "gender": {"dpd": g_dpd, "eod": g_eod},
             "age":    {"dpd": a_dpd, "eod": a_eod},
         }
 
+    # Copy top-level fairness from catboost for figure script
     cb_key = "catboost" if HAS_CATBOOST else "rf"
     results["fairness"]["gender"] = results["fairness"][cb_key]["gender"]
     results["fairness"]["age"]    = results["fairness"][cb_key]["age"]
 
+    # ------------------------------------------------------------------
+    # Save
+    # ------------------------------------------------------------------
     with open("results.json", "w") as f:
         json.dump(results, f, indent=2)
     print("\nResults saved to results.json")
-    print("Run  python3 figure_generation.py  to produce the figures.")
+    print("Run  python figure_generation.py  to produce the figures.")
 
 
 if __name__ == "__main__":
