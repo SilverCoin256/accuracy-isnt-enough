@@ -97,14 +97,16 @@ to get overconfident---pushing their predictions toward certainty more than
 the data actually supports---so I wanted to see how bad it was in
 practice.\textsuperscript{4}
 
-The second gap is stability. My test set had 294 records. That's just one
-random partition of 1,470 total. Bootstrap resampling lets you repeatedly
-redraw the test set with replacement and re-check the score each time,
-giving you a confidence interval rather than a single number. I expected
-the intervals to be wide; I wanted to see how wide.
+The second gap is about how stable the score even is. My test set had 294
+records---that's just one random partition of 1,470 total, and a different
+split would give a different number. Bootstrap resampling lets you redraw
+the test set repeatedly with replacement and re-check AUC each time, so
+you get a distribution instead of a single point. I expected those
+intervals to be wide. I wanted to know how wide.
 
-The third gap is fairness. A model can have fine average accuracy while
-making much worse errors for specific subgroups. Hardt et al.\ developed
+Fairness is the third thing I looked at, and honestly probably the most
+important one in a real deployment context. A model can have fine average
+accuracy while making much worse errors for specific subgroups. Hardt et al.\ developed
 two metrics for measuring this: Demographic Parity Difference (DPD), which
 compares positive prediction rates between groups, and Equalized Odds
 Difference (EOD), which compares the error structure between
@@ -280,9 +282,8 @@ distribution actually gets.
 \includegraphics[width=0.72\textwidth]{figures/fig2_bootstrap_distribution.png}
 \caption{Bootstrap distribution of CatBoost AUC across 1,000 resamples.
   The dashed vertical line is the observed test-set AUC; the dotted red
-  lines are the 95\% interval boundaries. The distribution is wide enough
-  that the reported score could easily have been 0.68 or 0.84 on a
-  different random split.}
+  lines are the 95\% interval boundaries. The spread shows how much the
+  reported AUC changes depending on which records end up in the test set.}
 \label{fig:bootstrap}
 \end{figure}
 
@@ -343,9 +344,10 @@ clinic, a small municipal program---those organizations are adopting
 machine learning tools with datasets in exactly this range, and if they
 only look at AUC, the intervals problem is invisible to them.
 
-The calibration correction results taught me something I didn't expect.
-CatBoost improved noticeably (ECE from 0.086 to 0.066), which made sense.
-But correction made Logistic Regression slightly worse. The correction needs
+The calibration correction results are worth going through carefully,
+because they're not what I expected. CatBoost improved noticeably
+(ECE from 0.086 to 0.066), which made sense. But correction made
+Logistic Regression slightly worse. The correction needs
 data to fit on, and if the model is already decent, you're just adding
 fitting noise from a small calibration set. It's not a free lunch---you
 have to think about whether the model actually needs it.
