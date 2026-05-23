@@ -1,0 +1,515 @@
+% National High School Journal of Science Submission
+% Compile: pdflatex manuscript.tex (x2), bibtex, pdflatex (x2)
+
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\doublespacing
+\usepackage{times}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue}
+\usepackage[numbers]{natbib}
+
+\captionsetup{font=small, labelfont=bf}
+
+\begin{document}
+
+\begin{center}
+{\large \textbf{Beyond Accuracy: Investigating Confidence, Calibration,
+and Fairness Gaps in a Small Machine Learning Classifier}}
+
+\vspace{0.8em}
+{\normalsize Shaurya Gupta}\\
+{\small Independent Researcher \quad \href{mailto:shauryagupta042@gmail.com}{shauryagupta042@gmail.com}}
+
+\vspace{0.5em}
+{\small \textit{Keywords:} machine learning; calibration; fairness; AUC;
+bootstrap uncertainty; small datasets; AI evaluation}
+\end{center}
+
+\begin{abstract}
+Machine learning classifiers are usually evaluated with a single number: the
+area under the ROC curve, or AUC. It measures ranking quality---how well the
+model separates positive cases from negative ones. What it doesn't measure is
+whether the model's predicted probabilities are actually reliable, whether the
+result would hold up under different data samples, or whether errors fall
+equally on all groups.
+
+I investigated these gaps by training three classifiers on a small
+benchmark dataset (1,470 records) and evaluating them through three additional
+lenses: calibration error, bootstrap uncertainty intervals, and demographic
+fairness metrics. All three models achieved AUC scores above 0.77, which
+looks acceptable. But calibration analysis showed systematic overconfidence,
+with Expected Calibration Error between 4.1\% and 6.5\% before correction.
+Bootstrap resampling showed that the 95\% confidence interval for AUC spanned
+roughly 17 percentage points---meaning the reported score is sensitive to
+which samples happened to end up in the test set. And age-based fairness
+analysis found an Equalized Odds Difference of 0.266, a substantial disparity
+that the AUC score completely obscures.
+
+The main finding is that a high accuracy score can coexist with miscalibrated
+probabilities, fragile results, and unequal errors---all at the same time.
+None of these problems require exotic statistics to detect. They just require
+asking the right questions.
+\end{abstract}
+
+\newpage
+
+\section{Introduction}
+
+When someone says an AI system is ``82\% accurate,'' it sounds pretty solid.
+More than four out of five predictions correct. But I kept running into a
+question I couldn't shake: what does that number actually tell you?
+
+The more I read about machine learning evaluation, the more I realized that
+accuracy---and even the more sophisticated version called AUC---leaves out some
+things that matter. It doesn't tell you whether the model's confidence
+estimates are trustworthy. It doesn't tell you how much the score might vary
+if you tested on a different batch of data. It doesn't tell you whether the
+errors fall equally on everyone, or whether some groups get worse predictions
+than others.
+
+These gaps might not matter much for a model classifying photos of cats versus
+dogs. But they matter a lot when the predictions affect real decisions about
+people---hiring, lending, medical triage, academic evaluation. In those
+contexts, someone is actually acting on the model's output. If the confidence
+numbers are off, or if the results are fragile, or if certain groups get
+systematically worse predictions, a good AUC score doesn't tell you any of
+that.
+
+I wanted to test this directly. I trained three classifiers on a small
+organizational dataset and evaluated them beyond AUC: with calibration
+analysis, bootstrap confidence intervals, and fairness metrics across
+demographic groups. The goal wasn't to find the best-performing model.
+It was to see how much the standard accuracy metric conceals.
+
+The results were more interesting than I expected. Every extra evaluation
+lens I applied revealed something the AUC score had been hiding.
+
+\section{Background}
+
+\subsection{What AUC Measures}
+
+The dominant metric for evaluating binary classifiers (models that output
+one of two categories) is AUC, the area under the receiver operating
+characteristic curve. For a classifier predicting whether something is
+positive or negative, AUC measures discrimination: if you randomly pick
+one true positive and one true negative, how often does the model assign
+the higher score to the positive case? An AUC of 0.80 means it gets this
+right 80\% of the time.
+
+That's genuinely useful. But AUC says nothing about the actual probability
+values the model outputs. Two models can have identical AUC scores while one
+gives well-calibrated probabilities and the other gives values that are
+systematically too high or too low. The ranking is the same; the numbers
+attached to each rank can be completely different.
+
+\subsection{Calibration: When Probabilities Should Mean Something}
+
+A well-calibrated model is one where the predicted probability actually
+matches the observed frequency. If it says a case has 70\% probability of
+the positive outcome, then roughly 70\% of cases with that predicted
+probability should actually turn out positive. The weather forecast analogy
+is probably the clearest: a meteorologist who says ``70\% chance of rain''
+is calibrated if it rains about 70\% of the time when they make that
+prediction---not 30\% of the time and not 95\% of the time.
+
+Guo et al.\ introduced Expected Calibration Error (ECE) as a practical
+metric for this \cite{guo2017}. It divides predictions into bins by
+confidence level and measures the average gap between predicted probability
+and actual outcome rate across bins. A perfectly calibrated model has
+ECE~=~0. Random forests and boosted trees tend to be overconfident---they
+push probabilities toward the extremes more than the data justifies
+\cite{niculescu2005}. This is worth checking because if you're using
+confidence scores to prioritize which predictions to act on, overconfident
+numbers give you the wrong impression of how certain the model really is.
+
+\subsection{Bootstrap Uncertainty: Is the Score Stable?}
+
+Any test-set evaluation is one particular draw from a noisy process.
+With a small dataset, the specific examples that end up in the test set
+can move the AUC score by several percentage points. Bootstrap resampling
+quantifies this: you repeatedly resample the data (with replacement), retrain
+or re-evaluate, and measure the spread of outcomes. The resulting confidence
+interval says something honest---this is the range the reported metric could
+have plausibly taken, not just a single lucky or unlucky number.
+
+\subsection{Fairness: Whose Errors?}
+
+Even a classifier with good average accuracy can make worse predictions for
+some demographic groups than others. Hardt et al.\ formalized two useful
+metrics for measuring this \cite{hardt2016}:
+
+\begin{itemize}
+  \item \textbf{Demographic Parity Difference (DPD)}: the gap in positive
+    prediction rates between two groups.
+  \item \textbf{Equalized Odds Difference (EOD)}: the gap in true positive
+    \emph{and} false positive rates between groups. A model satisfies
+    equalized odds when its error structure is the same regardless of group
+    membership.
+\end{itemize}
+
+A model can score perfectly on both DPD and EOD and still produce unjust
+outcomes if the label itself encodes historical bias---but measuring these
+metrics is at least a starting point for understanding whether the classifier
+treats groups differently.
+
+\section{Data and Methods}
+
+\subsection{Dataset}
+
+I used the IBM HR Analytics Employee Attrition dataset, a synthetic
+organizational benchmark publicly available through Kaggle
+\cite{ibm2015}. It contains 1,470 employee records described by 35
+variables: job characteristics, satisfaction ratings, demographics, and
+compensation. The binary outcome is whether the employee left the
+organization (attrition); 241 of 1,470 records (16.1\%) are labeled
+as attrition events.
+
+The dataset is synthetic---generated by IBM data scientists for
+educational purposes, not derived from any real workforce. This matters
+for interpreting results: the findings describe model behavior on a
+simulated benchmark, not on real employment decisions. That's a meaningful
+limitation. It also means the data can be used and shared without privacy
+issues, which is why I chose it.
+
+I split the data 80/20 (training: 1,176 records, test: 294) using stratified
+sampling to preserve the 16.1\% attrition rate in both sets.
+
+\subsection{Classifiers}
+
+I trained three classifiers:
+
+\begin{enumerate}
+  \item \textbf{Logistic Regression (LR)}: a simple linear model that
+    produces inherently calibrated probabilities under well-specified
+    conditions. Useful as a calibration baseline.
+  \item \textbf{Random Forest (RF)}: an ensemble of decision trees. Widely
+    used in practice on tabular data \cite{breiman2001}.
+  \item \textbf{CatBoost (CB)}: a gradient boosting algorithm with native
+    categorical feature handling \cite{prokhorenkova2018}.
+\end{enumerate}
+
+I didn't tune hyperparameters. The goal was to see how these classifiers
+look under additional evaluation metrics at representative performance
+levels, not to squeeze out the best possible AUC.
+
+\subsection{Evaluation}
+
+I evaluated four things:
+\begin{enumerate}
+  \item \textbf{AUC} on the held-out test set (the standard metric).
+  \item \textbf{Expected Calibration Error (ECE)} before and after
+    post-hoc calibration correction using isotonic regression.
+  \item \textbf{Bootstrap confidence intervals} on AUC: 1,000 resamples,
+    reporting the 2.5th and 97.5th percentiles.
+  \item \textbf{Fairness metrics} (DPD and EOD) for gender (Male/Female)
+    and age group (under~40 / over~40).
+\end{enumerate}
+
+All code is publicly available at:
+\url{https://github.com/SilverCoin256/accuracy-isnt-enough}
+
+\section{Results}
+
+\subsection{AUC: The Baseline Picture}
+
+All three classifiers achieved AUC above 0.77 on the test set (Table~\ref{tab:auc}).
+CatBoost performed best at 0.818. These scores are well above the 0.5 random
+baseline. If this were the only evaluation, the conclusion would be that all
+three models work reasonably well, with CatBoost the winner.
+
+\begin{table}[htbp]
+\centering
+\caption{Test-set AUC for each classifier.}
+\label{tab:auc}
+\begin{tabular}{lc}
+\toprule
+\textbf{Model} & \textbf{AUC} \\
+\midrule
+Logistic Regression & 0.777 \\
+Random Forest       & 0.802 \\
+CatBoost            & 0.818 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Calibration: The Confidence Scores Were Off}
+
+Table~\ref{tab:ece} shows Expected Calibration Error before and after
+applying isotonic regression as a post-hoc calibration correction.
+
+\begin{table}[htbp]
+\centering
+\caption{Expected Calibration Error (ECE) before and after isotonic regression calibration correction.}
+\label{tab:ece}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Model} & \textbf{ECE (before)} & \textbf{ECE (after)} \\
+\midrule
+Logistic Regression & 0.041 & 0.028 \\
+Random Forest       & 0.065 & 0.032 \\
+CatBoost            & 0.053 & 0.031 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Random Forest had the highest pre-calibration ECE at 6.5\%. CatBoost
+was at 5.3\%. These numbers mean, on average, the models' predicted
+probabilities were off from actual outcome rates by about 5--6 percentage
+points. Post-hoc calibration reduced ECE substantially for all three
+models, which confirms the miscalibration was a real pattern rather than
+noise. The fact that a simple correction layer works suggests the problem
+is structural---these models systematically over-report confidence in
+their predictions.
+
+Figure~\ref{fig:calibration} shows a reliability diagram for CatBoost
+before calibration. The diagonal represents perfect calibration; the
+model's curve deviates above the diagonal in the high-confidence region,
+where predictions are more confident than the actual outcome rates warrant.
+That high end is the most concerning: cases where the model is very
+confident are exactly the ones a decision-maker is most likely to act on
+without additional review.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.7\textwidth]{figures/fig1_reliability_diagram.png}
+\caption{Reliability diagram for CatBoost before post-hoc calibration.
+  The dashed diagonal represents perfect calibration. The model is
+  overconfident, particularly in the high-confidence region (right side
+  of the x-axis).}
+\label{fig:calibration}
+\end{figure}
+
+\subsection{Bootstrap Results: How Stable Are These Scores?}
+
+Table~\ref{tab:bootstrap} shows 95\% bootstrap confidence intervals
+on AUC for each model.
+
+\begin{table}[htbp]
+\centering
+\caption{Bootstrap 95\% confidence intervals on AUC (1,000 resamples).}
+\label{tab:bootstrap}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{AUC} & \textbf{95\% CI} & \textbf{Width} \\
+\midrule
+Logistic Regression & 0.777 & [0.704, 0.845] & 0.141 \\
+Random Forest       & 0.802 & [0.731, 0.869] & 0.138 \\
+CatBoost            & 0.818 & [0.748, 0.888] & 0.140 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These intervals are wide. A 95\% interval spanning about 14 percentage
+points for CatBoost (0.748 to 0.888) means that if the training and test
+split had turned out slightly differently, the reported AUC could plausibly
+have been anywhere in that range. The ``winning'' AUC of 0.818 is a point
+estimate from one particular draw of 294 test examples out of 1,470 total.
+It's not a stable measurement in the way that, say, a physical constant is.
+
+I found this one of the more surprising results. The point estimate looks
+clean and decisive. The interval around it says the underlying result is
+genuinely uncertain---not because the analysis was done wrong, but because
+1,470 data points genuinely don't support more precision than this. On
+a larger dataset the same model might produce a much narrower interval.
+On this one, it doesn't.
+
+Figure~\ref{fig:bootstrap} shows the bootstrap distribution of CatBoost AUC
+scores across all 1,000 resamples.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.72\textwidth]{figures/fig2_bootstrap_distribution.png}
+\caption{Bootstrap distribution of CatBoost AUC across 1,000 resamples.
+  The vertical dashed line marks the observed test AUC. The shaded region
+  shows the 95\% confidence interval. The distribution is fairly spread,
+  showing meaningful sensitivity to which samples ended up in each set.}
+\label{fig:bootstrap}
+\end{figure}
+
+\subsection{Fairness: Age-Based Disparities Were Large}
+
+Table~\ref{tab:fairness} shows demographic parity difference and equalized
+odds difference for gender (Male vs.\ Female) and age group (under~40
+vs.\ over~40), using CatBoost predictions.
+
+\begin{table}[htbp]
+\centering
+\caption{Fairness metrics for CatBoost. DPD = Demographic Parity Difference;
+  EOD = Equalized Odds Difference. Smaller values are better.}
+\label{tab:fairness}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Group} & \textbf{DPD} & \textbf{EOD} \\
+\midrule
+Gender (Male vs.\ Female) & 0.015 & 0.121 \\
+Age (Under~40 vs.\ Over~40) & 0.031 & 0.266 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Gender disparity was small: DPD of 0.015 and EOD of 0.121. The model
+predicts attrition for male and female employees at similar rates and
+with similar error structures. The age disparity was different. EOD of
+0.266 means there was a 26-percentage-point gap in equalized odds between
+younger and older employee groups---a substantial difference in how
+accurate the model was for each group, despite having the same overall AUC.
+
+To be clear: this finding has to be interpreted carefully on a synthetic
+dataset. The IBM HR data was generated by IBM, not collected from a real
+organization, so the age disparity might reflect an artifact of how the
+simulation was constructed rather than a pattern that generalizes. But
+that's exactly the point: the age-based EOD of 0.266 showed up regardless,
+and it's the kind of thing the overall AUC score of 0.818 never hints at.
+
+Figure~\ref{fig:fairness} shows the EOD comparison across groups.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.65\textwidth]{figures/fig3_fairness_comparison.png}
+\caption{Equalized Odds Difference for gender and age group using
+  CatBoost predictions. The dotted reference line at 0.10 marks a
+  commonly used threshold for acceptable group disparity. The age-group
+  EOD of 0.266 substantially exceeds it.}
+\label{fig:fairness}
+\end{figure}
+
+\section{Discussion}
+
+\subsection{What These Results Say Together}
+
+Taken together, these findings describe a model that looks good on the
+standard metric but has three distinct problems underneath it. The
+calibration issue means that acting on the model's confidence scores at
+face value would lead to systematically overconfident decisions---the model
+thinks it's more sure than it is. The bootstrap issue means that even the
+AUC number itself is less stable than it looks---on a dataset this size,
+reported accuracy is sensitive to data splits. And the fairness issue
+means that the model's errors aren't distributed equally, at least across
+age groups.
+
+None of these problems are catastrophic. The model isn't useless. But
+they're real, and none of them show up in the single AUC number that
+most evaluations stop at.
+
+\subsection{Why Small Datasets Make This Worse}
+
+All three problems are worse on small datasets than on large ones. A
+larger training set would give the model more signal, reducing calibration
+error. A larger test set would narrow the bootstrap confidence intervals.
+More examples per demographic group would give more precise fairness
+estimates.
+
+The IBM HR dataset has 1,470 records. That's small by the standards of
+modern ML, but it's not unusual for the kinds of settings where AI systems
+are actually being built---school districts, small companies, local
+healthcare organizations. These datasets are private, hard to obtain,
+and often not much larger than this one. The evaluation problems I found
+here aren't unusual edge cases; they're likely common.
+
+\subsection{Post-Hoc Calibration Helps}
+
+One straightforward fix is worth noting: post-hoc calibration (fitting a
+correction function on a held-out calibration set) reduced ECE by roughly
+40--50\% for all three models. That's encouraging. It suggests the
+miscalibration isn't baked into the model's fundamental behavior---it can
+be corrected with an extra step. The cost is setting aside part of the
+data for calibration fitting, which is a tradeoff on a small dataset.
+
+\subsection{What I'd Do Differently}
+
+A few things I'd want to explore with more resources: first, running the
+same experiment across multiple real-world datasets to check whether these
+patterns hold generally or are specific to this benchmark. Second, looking
+at zone-level calibration---whether miscalibration concentrates in
+uncertain or confident predictions, which matters differently for
+decision-making. Third, checking whether the age disparity persists after
+calibration correction, or whether it's partly an artifact of miscalibration.
+
+\section{Conclusion}
+
+I started this project because the phrase ``82\% accurate'' seemed both
+reassuring and underspecified. After running calibration analysis,
+bootstrap uncertainty estimation, and fairness metrics on three classifiers,
+I'm more convinced that single-number accuracy summaries consistently
+hide important information.
+
+The additional evaluations I ran aren't technically exotic. Calibration
+error, bootstrap intervals, and fairness metrics are all implementable in
+Python with standard libraries, using the same data that would go into
+computing AUC. The barrier isn't skill or data access. It's just the
+habit of asking: what else might be wrong that this one number doesn't show?
+
+All classifiers passed a basic AUC threshold while failing, to varying
+degrees, on calibration, stability, and fairness. That doesn't make them
+useless. It makes them more complicated than their headline score suggests.
+And in settings where AI predictions shape real decisions, that complexity
+is worth knowing about.
+
+\section*{Data Availability}
+IBM HR Analytics Employee Attrition dataset: publicly available on Kaggle at
+\url{https://www.kaggle.com/datasets/pavansubhasht/ibm-hr-analytics-attrition-dataset}
+
+\section*{Code Availability}
+All analysis code and figure generation scripts are available at:
+\url{https://github.com/SilverCoin256/accuracy-isnt-enough}
+
+\section*{AI Assistance Disclosure}
+Generative AI tools were used for code formatting and citation lookup.
+All analysis decisions, interpretations, and manuscript writing
+were conducted by the author.
+
+\begin{thebibliography}{9}
+
+\bibitem{breiman2001}
+L.~Breiman, ``Random forests,''
+\textit{Machine Learning}, vol.~45, pp.~5--32, 2001.
+
+\bibitem{guo2017}
+C.~Guo, G.~Pleiss, Y.~Sun, and K.~Q.~Weinberger,
+``On calibration of modern neural networks,''
+in \textit{Proc.\ 34th Int.\ Conf.\ Machine Learning (ICML)},
+pp.~1321--1330, 2017.
+
+\bibitem{hardt2016}
+M.~Hardt, E.~Price, and N.~Srebro,
+``Equality of opportunity in supervised learning,''
+in \textit{Advances in Neural Information Processing Systems}, vol.~29,
+pp.~3323--3331, 2016.
+
+\bibitem{ibm2015}
+IBM Data Scientists,
+``IBM HR Analytics Employee Attrition \& Performance [Synthetic dataset],''
+Kaggle, 2015. [Online]. Available:
+\url{https://www.kaggle.com/datasets/pavansubhasht/ibm-hr-analytics-attrition-dataset}
+
+\bibitem{mehrabi2021}
+N.~Mehrabi, F.~Morstatter, N.~Saxena, K.~Lerman, and A.~Galstyan,
+``A survey on bias and fairness in machine learning,''
+\textit{ACM Computing Surveys}, vol.~54, no.~6, Article~115, 2021.
+
+\bibitem{niculescu2005}
+A.~Niculescu-Mizil and R.~Caruana,
+``Predicting good probabilities with supervised learning,''
+in \textit{Proc.\ 22nd Int.\ Conf.\ Machine Learning (ICML)},
+pp.~625--632, 2005.
+
+\bibitem{prokhorenkova2018}
+L.~Prokhorenkova, G.~Gusev, A.~Vorobev, A.~V.~Dorogush, and A.~Gulin,
+``CatBoost: Unbiased boosting with categorical features,''
+in \textit{Advances in Neural Information Processing Systems}, vol.~31,
+2018.
+
+\bibitem{sculley2015}
+D.~Sculley \textit{et al.},
+``Hidden technical debt in machine learning systems,''
+in \textit{Advances in NIPS}, vol.~28, pp.~2503--2511, 2015.
+
+\end{thebibliography}
+
+\end{document}
