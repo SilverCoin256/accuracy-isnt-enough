@@ -101,6 +101,34 @@ figures are saved as both SVG and PNG. SVG for the paper, PNG as backup.
 
 ---
 
+## writing the paper -- first draft
+
+abstract took the longest. kept rewriting it because I kept starting with a
+definition ("AUC measures rank discrimination...") and then realizing that's
+boring and not what I actually want to say. ended up starting with the
+observation about the habit instead.
+
+the methods section was hard to write without it sounding like a recipe.
+i probably rewrote the dataset paragraph 3-4 times.
+
+---
+
+## things that tripped me up mid-project
+
+- forgot that isotonic regression needs the calibration set to be *separate*
+  from training and test. my first version was accidentally fitting on part
+  of the test set. had to redo the split logic
+
+- the fairness metrics section took a while to understand conceptually.
+  DPD is simpler (just compare positive rate), EOD is more subtle (it's
+  comparing the full error structure, not just one number).
+
+- latex compilation kept failing on the url in the references section.
+  something to do with how hyperref handles long URLs inside the reference list.
+  ended up just leaving them as plain text.
+
+---
+
 ## things I want to follow up on eventually
 
 - [ ] does the age EOD change after calibration correction?
