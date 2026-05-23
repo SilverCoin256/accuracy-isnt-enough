@@ -2,7 +2,7 @@
 
 Code for the paper **"Beyond Accuracy: Investigating Confidence, Calibration, and Fairness Gaps in a Small Machine Learning Classifier"** — submitted to the National High School Journal of Science.
 
-The paper asks a pretty basic question: if an AI system scores 82% accuracy, how much does that number actually tell you? I ran three classifiers on a small organizational dataset and checked them for calibration error, bootstrap uncertainty, and fairness across demographic groups. The short answer is: the accuracy score was hiding several real problems.
+The paper asks a basic question: if an AI system scores well on AUC, how much does that number actually tell you? I trained three classifiers on a small organizational dataset and evaluated them for calibration error, bootstrap uncertainty, and fairness across demographic groups. The short answer is: the AUC score was hiding several real problems.
 
 ## What's here
 
@@ -11,9 +11,11 @@ calibration_analysis.py   main analysis pipeline (AUC, ECE, bootstrap, fairness)
 figure_generation.py      produces all three manuscript figures
 requirements.txt          Python dependencies
 data/README.md            how to get the dataset
-figures/                  generated plots (SVG + PNG)
+figures/                  figures go here after running figure_generation.py
 results.json              output snapshot from the analysis
 manuscript.tex            LaTeX source for the paper
+dev_log.md                informal notes on what I tried and what broke
+notebooks/exploration.ipynb  initial data exploration notebook
 ```
 
 ## Quick start
@@ -29,7 +31,7 @@ python3 calibration_analysis.py   # writes results.json
 python3 figure_generation.py      # writes figures/
 ```
 
-Both scripts are self-contained. If you just want the figures without running the model, `figure_generation.py` falls back to the manuscript's reported values if `results.json` isn't present.
+Both scripts are self-contained. `figure_generation.py` falls back to the manuscript's reported values if `results.json` isn't present, so you can check the figure style without running the full pipeline.
 
 ## Dataset
 
@@ -38,9 +40,19 @@ IBM HR Analytics Employee Attrition dataset. 1,470 synthetic employee records, 3
 ## What the analysis does
 
 1. Trains three classifiers: Logistic Regression, Random Forest, CatBoost
-2. Computes test-set AUC for each
+2. Computes test-set AUC for each (range: 0.759–0.798)
 3. Computes Expected Calibration Error before and after isotonic regression correction
 4. Bootstraps AUC 1,000 times to get a 95% confidence interval
 5. Computes Demographic Parity Difference and Equalized Odds Difference for gender and age group
 
-The main finding is that all three models achieved decent AUC (0.78–0.82) while having meaningful calibration error, wide confidence intervals, and a substantial age-group fairness disparity. None of those issues show up if you only look at AUC.
+## Key results
+
+| Model | AUC | ECE (before) | ECE (after) | 95% CI |
+|---|---|---|---|---|
+| Logistic Regression | 0.798 | 0.047 | 0.058 | [0.716, 0.874] |
+| Random Forest | 0.759 | 0.032 | 0.036 | [0.686, 0.832] |
+| CatBoost | 0.762 | 0.086 | 0.066 | [0.676, 0.838] |
+
+Fairness (CatBoost, age group EOD): **0.258** — a substantial gap that the AUC score never mentions.
+
+The CI widths (~0.15–0.16) show that on 294 test examples, the reported AUC is a point estimate with real uncertainty. Not a bug — just what 1,470 records can and can't tell you.
