@@ -16,7 +16,7 @@ import json
 import warnings
 import numpy as np
 import pandas as pd
-from sklearn.calibration import CalibratedClassifierCV
+from sklearn.isotonic import IsotonicRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
@@ -96,7 +96,7 @@ def bootstrap_auc(y_true, y_prob, n=1000, seed=42):
 
 
 def load_data(path):
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, sep=None, engine="python")
     drop_cols = ["EmployeeNumber", "EmployeeCount", "StandardHours", "Over18"]
     df = df.drop(columns=[c for c in drop_cols if c in df.columns])
     df["Attrition"] = (df["Attrition"] == "Yes").astype(int)
@@ -138,19 +138,19 @@ def main():
 
     lr = LogisticRegression(max_iter=1000, random_state=RANDOM_SEED)
     lr.fit(Xtr2_sc, ytr2)
-    models["lr"] = ("LR", lr, Xte_sc, Xtr2_sc, Xcal_sc)
+    models["lr"] = ("LR", lr, Xte_sc, Xcal_sc)
 
     rf = RandomForestClassifier(n_estimators=300, random_state=RANDOM_SEED)
     rf.fit(Xtr2, ytr2)
-    models["rf"] = ("RF", rf, X_test, Xtr2, Xcal)
+    models["rf"] = ("RF", rf, X_test, Xcal)
 
     if HAS_CATBOOST:
         cb = CatBoostClassifier(iterations=300, depth=6, learning_rate=0.05,
                                 random_seed=RANDOM_SEED, verbose=0)
         cb.fit(Xtr2, ytr2)
-        models["catboost"] = ("CatBoost", cb, X_test, Xtr2, Xcal)
+        models["catboost"] = ("CatBoost", cb, X_test, Xcal)
 
-    for key, (name, clf, Xte, Xtr_fit, Xcal_fit) in models.items():
+    for key, (name, clf, Xte, Xcal_fit) in models.items():
         print(f"\n--- {name} ---")
         prob_te = clf.predict_proba(Xte)[:, 1]
         auc_val = roc_auc_score(y_test, prob_te)
@@ -160,9 +160,12 @@ def main():
         ece_pre, bins_pre = ece(y_test, prob_te)
         print(f"  ECE (pre):  {ece_pre:.4f}")
 
-        cal_clf = CalibratedClassifierCV(clf, cv="prefit", method="isotonic")
-        cal_clf.fit(Xcal_fit, ycal)
-        prob_cal = cal_clf.predict_proba(Xte)[:, 1]
+        # Post-hoc calibration via isotonic regression on cal set
+        prob_cal_fit = clf.predict_proba(Xcal_fit)[:, 1]
+        ir = IsotonicRegression(out_of_bounds="clip")
+        ir.fit(prob_cal_fit, ycal)
+        prob_cal = ir.predict(prob_te)
+
         ece_post, bins_post = ece(y_test, prob_cal)
         print(f"  ECE (post): {ece_post:.4f}")
 
@@ -180,8 +183,8 @@ def main():
         g_eod = eod(y_test, y_pred_bin, gender_test) if gender_test is not None else None
         a_dpd = dpd(y_pred_bin, age_test) if age_test is not None else None
         a_eod = eod(y_test, y_pred_bin, age_test) if age_test is not None else None
-        if g_dpd: print(f"  Gender DPD: {g_dpd:.4f}  EOD: {g_eod:.4f}")
-        if a_dpd: print(f"  Age    DPD: {a_dpd:.4f}  EOD: {a_eod:.4f}")
+        if g_dpd is not None: print(f"  Gender DPD: {g_dpd:.4f}  EOD: {g_eod:.4f}")
+        if a_dpd is not None: print(f"  Age    DPD: {a_dpd:.4f}  EOD: {a_eod:.4f}")
         results["fairness"][key] = {
             "gender": {"dpd": g_dpd, "eod": g_eod},
             "age":    {"dpd": a_dpd, "eod": a_eod},
