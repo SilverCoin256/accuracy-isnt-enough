@@ -36,12 +36,11 @@ RANDOM_SEED = 42
 DATA_PATH   = "data/ibm_hr_attrition.csv"
 
 
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
+# helpers
 
 def ece(y_true, y_prob, n_bins=10):
-    """Expected Calibration Error with equal-width bins."""
+    # equal-width bins -- tried 15 bins too, didn't change results much
+    """Expected Calibration Error."""
     bins = np.linspace(0, 1, n_bins + 1)
     total_ece = 0.0
     bin_data  = []
@@ -59,7 +58,6 @@ def ece(y_true, y_prob, n_bins=10):
 
 
 def dpd(y_pred, group):
-    """Demographic Parity Difference between two binary group values."""
     vals = np.unique(group)
     rates = [y_pred[group == v].mean() for v in vals]
     return float(abs(rates[0] - rates[1]))
@@ -101,9 +99,7 @@ def bootstrap_auc(y_true, y_prob, n=1000, seed=42):
     }
 
 
-# ------------------------------------------------------------------
-# Load and preprocess
-# ------------------------------------------------------------------
+# data loading
 
 def load_data(path):
     df = pd.read_csv(path, sep=None, engine="python")
@@ -143,7 +139,8 @@ def main():
     gender_test = X_test["Gender"].values if "Gender" in X_test else None
     age_test    = (X_test["Age"].values < 40).astype(int) if "Age" in X_test else None
 
-    # Calibration hold-out from training set
+    # hold out 20% of training set for calibration fitting
+    # (important: this is separate from the test set)
     Xtr2, Xcal, ytr2, ycal = train_test_split(
         X_train, y_train, test_size=0.2, random_state=RANDOM_SEED, stratify=y_train
     )
@@ -152,9 +149,8 @@ def main():
 
     results = {"auc": {}, "calibration": {}, "bootstrap": {}, "fairness": {}}
 
-    # ------------------------------------------------------------------
-    # Models
-    # ------------------------------------------------------------------
+    # train models
+    # TODO: could add hyperparameter tuning here but the goal was evaluation not optimization
     models = {}
 
     # Logistic Regression
